@@ -1,0 +1,21 @@
+name: trailforge
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pandas
+  - geopandas
+  - shapely
+  - pyproj
+  - fiona
+  - numpy
+  - scikit-learn
+  - jupyterlab
+  - matplotlib
+  - openpyxl   # .xlsx
+  - xlrd       # legacy .xls (北京登山中心线_春.xls)
+  - pyarrow    # parquet output for interaction matrix
+  # --- added later for Phase 2 (algorithm) ---
+  # - pytorch
+  # - faiss-cpu
+  # - transformers
