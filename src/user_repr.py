@@ -48,7 +48,9 @@ def assemble() -> pd.DataFrame:
 
 def load_user_matrix() -> tuple[pd.DataFrame, list[str]]:
     u = pd.read_parquet(OUT)
-    feat_cols = [c for c in u.columns if c.startswith("u_")]
+    # u_cluster_* (u_), u_LLM (llm_), and the has_llm_profile flag are all features
+    feat_cols = [c for c in u.columns
+                 if c.startswith(("u_", "llm_")) or c == "has_llm_profile"]
     return u, feat_cols
 
 
