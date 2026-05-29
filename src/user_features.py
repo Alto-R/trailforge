@@ -11,9 +11,14 @@ Run:
   python src/user_features.py           # full per-trip build + GMM clustering
 """
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
+
+# GaussianMixture(full cov) crashes (native MKL exit) in this conda env unless
+# the MKL threading layer is sequential. Must be set before numpy/MKL loads.
+os.environ.setdefault("MKL_THREADING_LAYER", "SEQUENTIAL")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config as C  # noqa: E402
@@ -127,6 +132,25 @@ def build_trip_table(pilot=False) -> pd.DataFrame:
     return tbl
 
 
+MAX_DIST_KM = 50.0     # trips longer than this are GPS-corrupt (max seen 14,159km)
+MAX_DURATION_H = 24.0  # climbing trips over a day are concatenation/jitter artifacts
+
+
+def clean_trips(tbl: pd.DataFrame) -> pd.DataFrame:
+    """Drop GPS-corrupt outlier trips before behaviour aggregation (档案A).
+
+    These outliers (2.2% of trips) otherwise dominate a user's dist_mean /
+    duration_mean and produced the spurious GMM clusters 6/7 in D0.3
+    (mean 102km / 21h). duration_h may be null (kept)."""
+    n0 = len(tbl)
+    ok = (tbl["dist_km"] <= MAX_DIST_KM) & (
+        tbl["duration_h"].isna() | (tbl["duration_h"] <= MAX_DURATION_H))
+    out = tbl[ok].copy()
+    print(f"[clean] dropped {n0 - len(out)} outlier trips "
+          f"(dist>{MAX_DIST_KM:.0f}km or dur>{MAX_DURATION_H:.0f}h) of {n0}")
+    return out
+
+
 def _entropy(counts) -> float:
     p = np.asarray(counts, float)
     p = p[p > 0]
@@ -135,6 +159,7 @@ def _entropy(counts) -> float:
 
 
 def user_features(tbl: pd.DataFrame, min_trips=MIN_TRIPS) -> pd.DataFrame:
+    tbl = clean_trips(tbl)  # T1.2: remove GPS-corrupt outliers (fixes D0.3 cluster 6/7)
     tbl = tbl.dropna(subset=["date"]).copy()
     tbl["month"] = tbl["date"].dt.month
     tbl["weekday"] = tbl["date"].dt.weekday
