@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config as C  # noqa: E402
 
 SOFT = C.DATA_PROCESSED / "user_cluster_soft.parquet"
+LLM = C.DATA_PROCESSED / "user_llm_profile.parquet"
 OUT = C.DATA_PROCESSED / "user_features_repr.parquet"
 
 
@@ -31,7 +32,16 @@ def assemble() -> pd.DataFrame:
     pcols = [c for c in soft.columns if c.startswith("p") and c[1:].isdigit()]
     u = soft[pcols].copy()
     u.columns = [f"u_cluster_{c[1:]}" for c in pcols]
-    u["has_llm_profile"] = 0          # reserved; set when u_LLM is added (T2.2)
+
+    # u_LLM (T2.2): merge if available; cold users -> column mean + flag 0
+    if LLM.exists():
+        llm = pd.read_parquet(LLM)
+        u = u.join(llm, how="left")
+        llm_cols = list(llm.columns)
+        u["has_llm_profile"] = u[llm_cols[0]].notna().astype(int)
+        u[llm_cols] = u[llm_cols].fillna(u[llm_cols].mean())
+    else:
+        u["has_llm_profile"] = 0      # reserved until extraction is run
     u.index.name = "userid"
     return u
 
