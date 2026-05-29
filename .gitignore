@@ -12,3 +12,6 @@ __pycache__/
 .idea/
 .vscode/
 *.log
+
+# secrets — never commit
+.env

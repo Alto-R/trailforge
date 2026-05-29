@@ -3,10 +3,29 @@
 All raw data lives on the G: drive (read-only source of truth). Processed
 artifacts are written under data_processed/ inside this repo.
 """
+import os
 from pathlib import Path
 
 # --- repo layout -----------------------------------------------------------
 REPO_ROOT = Path(__file__).resolve().parent
+
+
+def _load_dotenv() -> None:
+    """Minimal .env loader (no python-dotenv dep). Reads KEY=VALUE lines from
+    REPO_ROOT/.env into os.environ without overriding existing vars. .env is
+    gitignored (holds secrets like DEEPSEEK_API_KEY)."""
+    env = REPO_ROOT / ".env"
+    if not env.exists():
+        return
+    for line in env.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip())
+
+
+_load_dotenv()
 DATA_PROCESSED = REPO_ROOT / "data_processed"
 REPORTS = REPO_ROOT / "reports"
 DATA_PROCESSED.mkdir(exist_ok=True)
