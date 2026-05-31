@@ -37,6 +37,7 @@ from src.user_repr import load_user_matrix  # noqa: E402
 
 TRAIN = C.DATA_PROCESSED / "interactions_train.parquet"
 TEST = C.DATA_PROCESSED / "interactions_test.parquet"
+SEG_CENTROIDS = C.DATA_PROCESSED / "segment_centroids.parquet"
 K_GEO = 200
 N_EVAL_NEG = 99
 KS = [5, 10, 20]
@@ -52,10 +53,22 @@ CONFIGS = {  # name -> (use_content, use_collab, adaptive_alpha, novis)
 
 
 def _seg_centroids(seg_ids: np.ndarray) -> np.ndarray:
-    g = gpd.read_file(C.CLIM_SPRING_SEG, columns=["lypID"]).set_index("lypID")
-    cen = g.geometry.centroid
-    xy = np.c_[cen.x.values, cen.y.values]
-    pos = {sid: i for i, sid in enumerate(g.index.to_numpy())}
+    """Segment centroids (Albers metres) for the geo-negative KDTree.
+
+    Cached to data_processed/segment_centroids.parquet on first read so that
+    repeated (e.g. multi-seed) runs do not re-read the G: shapefile, whose
+    non-ASCII path also requires PYTHONUTF8=1 for GDAL to find it.
+    """
+    if SEG_CENTROIDS.exists():
+        c = pd.read_parquet(SEG_CENTROIDS)
+    else:
+        g = gpd.read_file(C.CLIM_SPRING_SEG, columns=["lypID"]).set_index("lypID")
+        cen = g.geometry.centroid
+        c = pd.DataFrame({"cx": cen.x.values, "cy": cen.y.values}, index=g.index)
+        c.index.name = "lypID"
+        c.to_parquet(SEG_CENTROIDS)
+    xy = c[["cx", "cy"]].to_numpy()
+    pos = {sid: i for i, sid in enumerate(c.index.to_numpy())}
     return np.array([xy[pos[s]] for s in seg_ids])
 
 
@@ -87,6 +100,10 @@ def load_data():
     pos_by_user: dict[int, set] = {}
     for uid, s in pd.concat([tr_pairs, te_pairs]).itertuples(index=False):
         pos_by_user.setdefault(uidx[uid], set()).add(sidx[s])
+    # packed (user, seg) positives for vectorised negative rejection (fast path)
+    pos_packed = np.array(sorted(u * len(segs) + s
+                                 for u, ss in pos_by_user.items() for s in ss),
+                          dtype=np.int64)
 
     tr_u = tr_pairs.userid.map(uidx).to_numpy()
     tr_s = tr_pairs.lypID.map(sidx).to_numpy()
@@ -102,6 +119,7 @@ def load_data():
           f"s_dim={len(s_cols)} (novis {len(s_cols_novis)}) | "
           f"train={len(tr_u)} test={len(te_u)}")
     return dict(U=U, S=S, S_novis=S_novis, nn_idx=nn_idx, pos_by_user=pos_by_user,
+                pos_packed=pos_packed,
                 tr_u=tr_u, tr_s=tr_s, te_u=te_u, te_s=te_s,
                 log_cnt_u=log_cnt_u, log_cnt_s=log_cnt_s,
                 n_users=len(users), n_segs=len(segs),
@@ -119,6 +137,77 @@ def sample_neg(u_arr, s_arr, nn_idx, pos_by_user, rng):
         else:
             neg[i] = pool[rng.integers(len(pool))]
     return neg
+
+
+def _in_sorted(q, sorted_arr):
+    """Membership test that exploits sorted_arr being pre-sorted (unlike
+    np.isin, which re-sorts its second argument on every call -- a killer when
+    called once per minibatch against ~10^6 positives)."""
+    idx = np.searchsorted(sorted_arr, q)
+    idx = np.minimum(idx, len(sorted_arr) - 1)
+    return sorted_arr[idx] == q
+
+
+def sample_neg_fast(u_arr, s_arr, nn_idx, pos_packed, n_segs, rng, tries=8):
+    """Vectorised geo-negative sampling. Same scheme as sample_neg (draw up to
+    `tries` geo-neighbours, take the first that is not a known positive, else
+    fall back to the first draw) but batched over the whole minibatch. The RNG
+    stream differs from sample_neg, so results are statistically -- not bit --
+    identical to the per-sample version."""
+    B, K = len(s_arr), nn_idx.shape[1]
+    pool = nn_idx[s_arr]                                         # [B, K]
+    cols = rng.integers(0, K, size=(B, tries))
+    cand = np.take_along_axis(pool, cols, axis=1)               # [B, tries]
+    packed = u_arr[:, None].astype(np.int64) * n_segs + cand
+    valid = ~_in_sorted(packed, pos_packed)                     # [B, tries]
+    first = np.where(valid.any(1), valid.argmax(1), 0)          # first valid, else 0
+    return cand[np.arange(B), first].astype(np.int64)
+
+
+def _eval_candidates(d, rng):
+    """For each test positive, pick N_EVAL_NEG geo-negatives not among the
+    user's known positives (vectorised). Rows with < N_EVAL_NEG valid negatives
+    are dropped (matching evaluate's `continue`). Returns (cand_u, cand_s), each
+    [M, 1+N_EVAL_NEG] with column 0 = the positive."""
+    nn_idx, pos_packed, n_segs = d["nn_idx"], d["pos_packed"], d["n_segs"]
+    te_u, te_s = d["te_u"], d["te_s"]
+    pool = nn_idx[te_s]                                          # [Ne, K]
+    packed = te_u[:, None].astype(np.int64) * n_segs + pool
+    valid = ~_in_sorted(packed, pos_packed)                     # [Ne, K]
+    keep = valid.sum(1) >= N_EVAL_NEG
+    pool, valid, te_u, te_s = pool[keep], valid[keep], te_u[keep], te_s[keep]
+    key = rng.random(pool.shape)
+    key[~valid] = -1.0                                          # exclude positives
+    sel = np.argpartition(-key, N_EVAL_NEG - 1, axis=1)[:, :N_EVAL_NEG]
+    negs = np.take_along_axis(pool, sel, axis=1)                # [M, N_EVAL_NEG]
+    cand_s = np.concatenate([te_s[:, None], negs], axis=1)      # [M, 1+neg]
+    cand_u = np.repeat(te_u[:, None], cand_s.shape[1], axis=1)
+    return cand_u, cand_s
+
+
+def evaluate_fast(model, d, S, rng, chunk=4096) -> dict:
+    """Vectorised equivalent of evaluate(): score all 100-way ranking groups in
+    batched forward passes instead of one Python call per test positive."""
+    model.eval()
+    U, lcu, lcs = d["U"], d["log_cnt_u"], d["log_cnt_s"]
+    cand_u, cand_s = _eval_candidates(d, rng)
+    M, Cn = cand_s.shape
+    ranks = np.empty(M, dtype=np.int64)
+    with torch.no_grad():
+        for b in range(0, M, chunk):
+            cu = torch.from_numpy(cand_u[b:b + chunk].reshape(-1)).long()
+            cs = torch.from_numpy(cand_s[b:b + chunk].reshape(-1)).long()
+            sc = model.score(U[cu], S[cs], cu, cs, lcu[cu], lcs[cs]).numpy().reshape(-1, Cn)
+            ranks[b:b + chunk] = (sc[:, 1:] > sc[:, :1]).sum(1)
+    return _metrics(ranks)
+
+
+def popularity_eval_fast(d, rng) -> dict:
+    """E0 fast path: rank candidates by segment train-traffic (log_cnt_s)."""
+    lcs = d["log_cnt_s"].numpy()
+    _, cand_s = _eval_candidates(d, rng)
+    sc = lcs[cand_s]
+    return _metrics((sc[:, 1:] > sc[:, :1]).sum(1))
 
 
 def _metrics(ranks):
@@ -169,10 +258,10 @@ def popularity_eval(d, rng) -> dict:
     return _metrics(ranks)
 
 
-def train_one(name, cfg, d, epochs, lr=1e-3, bs=1024):
+def train_one(name, cfg, d, epochs, lr=1e-3, bs=1024, seed=SEED, fast=False):
     use_content, use_collab, adaptive, novis = cfg
-    torch.manual_seed(SEED)
-    rng = np.random.default_rng(SEED)
+    torch.manual_seed(seed)
+    rng = np.random.default_rng(seed)
     S = d["S_novis"] if novis else d["S"]
     s_dim = d["s_dim_novis"] if novis else d["s_dim"]
     model = TwoTowerCF(d["u_dim"], s_dim, d["n_users"], d["n_segs"], alpha=0.7,
@@ -186,7 +275,9 @@ def train_one(name, cfg, d, epochs, lr=1e-3, bs=1024):
         for b in range(0, n, bs):
             idx = perm[b:b + bs]
             u_b, sp_b = tr_u[idx], tr_s[idx]
-            sn_b = sample_neg(u_b, sp_b, d["nn_idx"], d["pos_by_user"], rng)
+            sn_b = (sample_neg_fast(u_b, sp_b, d["nn_idx"], d["pos_packed"], d["n_segs"], rng)
+                    if fast else
+                    sample_neg(u_b, sp_b, d["nn_idx"], d["pos_by_user"], rng))
             ut = torch.tensor(u_b); spt = torch.tensor(sp_b); snt = torch.tensor(sn_b)
             pos, neg = model(U[ut], None, ut, spt, snt, S[spt], S[snt],
                              lcu[ut], lcs[spt], lcs[snt])
@@ -199,7 +290,8 @@ def train_one(name, cfg, d, epochs, lr=1e-3, bs=1024):
                 w = model.alpha_w.detach().numpy()
                 extra = f" alpha_w={w.round(3).tolist()}"
             print(f"  [{name}] epoch {ep+1}/{epochs} bpr_loss={tot/n:.4f}{extra}", flush=True)
-    return evaluate(model, d, S, np.random.default_rng(SEED))
+    eval_fn = evaluate_fast if fast else evaluate
+    return eval_fn(model, d, S, np.random.default_rng(seed))
 
 
 if __name__ == "__main__":

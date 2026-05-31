@@ -1,0 +1,7 @@
+contrast,metric,mean_diff,t,p_value,n_seeds
+E4 hybrid-adaptA  -  E1 pure-collab,Recall@10,-0.0118,-9.942,0.000575,5
+E2 pure-content  -  E0 popularity,Recall@10,-0.0023,-4.195,0.0137,5
+E2 content (full)  -  E1 collab (floor),Recall@10,0.3102,25.063,1.5e-05,5
+E2 content (full)  -  E2 -u_LLM,Recall@10,0.0006,0.862,0.437,5
+E2 content (full)  -  E2 -visual,Recall@10,-0.003,-2.161,0.0968,5
+E2 content (full)  -  E2 -u_LLM -visual,Recall@10,-0.0038,-2.597,0.0602,5

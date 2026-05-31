@@ -28,8 +28,8 @@ COLD_FRAC = 0.20
 COLD_CONFIGS = ["E1 pure-collab", "E2 pure-content", "E4 hybrid-adaptA"]
 
 
-def make_cold_split(d, cold_frac=COLD_FRAC):
-    rng = np.random.default_rng(SEED)
+def make_cold_split(d, cold_frac=COLD_FRAC, seed=SEED):
+    rng = np.random.default_rng(seed)
     n_users = d["n_users"]
     cold = set(rng.choice(n_users, int(n_users * cold_frac), replace=False).tolist())
     # train only on warm users; evaluate only on cold users
