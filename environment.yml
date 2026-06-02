@@ -16,6 +16,16 @@ dependencies:
   - xlrd       # legacy .xls (北京登山中心线_春.xls)
   - pyarrow    # parquet output for interaction matrix
   # --- added later for Phase 2 (algorithm) ---
-  # - pytorch
+  # - pytorch       # 已装(env 内 torch 2.12 cpu);CF 模型用
   # - faiss-cpu
   # - transformers
+  # --- Phase 1 工程线 backend（pip 装进 env，见下） ---
+  - pip
+  - pip:
+    - fastapi       # /route API
+    - uvicorn       # ASGI server
+    - pydantic>=2   # 请求/响应校验
+    - pytest        # 后端测试
+    - httpx         # FastAPI TestClient
+# 运行约定：后端/测试一律 `PYTHONNOUSERSITE=1 PYTHONUTF8=1` 启动，
+# 屏蔽用户级 AppData\Roaming\Python311 污染（曾混入坏 fastapi）并解决中文路径 GDAL。
