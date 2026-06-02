@@ -1,6 +1,6 @@
 # TrailForge（Vispath 2.0）— 户外个性化游线推荐系统
 
-> **范围**：北京登山（climbing）单活动　**当前状态**：研究主线（混合 CF）已闭环并完成决定性验证；工程主线（后端 API / 前端 demo）尚未启动
+> **范围**：北京登山（climbing）单活动　**当前状态**：研究主线（混合 CF）已闭环并完成决定性验证；工程主线后端 `/route` 服务已交付（探索辅助形态，27 测试绿），前端待开发
 > **仓库**：[Alto-R/trailforge](https://github.com/Alto-R/trailforge)　**配套文档**：《户外个性化游线推荐系统：研究与原型开发计划》主文档 + 执行手册（见上级目录）
 > **快照日期**：2026-05-31（里程碑与状态请以 [reports/PROGRESS.md](reports/PROGRESS.md) 为准）
 
@@ -31,8 +31,9 @@
 | 2026-05 | **T2.5 冷启动专项（决定性结果）** | 活跃域结论反转：协同 0.182（≈随机）、内容 0.457（2.5×）、自适应 E4 0.449 两域都稳 | [T2.5_coldstart.md](reports/T2.5_coldstart.md) |
 | 2026-05 | **T1.5 规则版路径生成器** | best-first DFS，不同偏好从同一起点生成可区分的 ~4km 路线 + WGS84 GeoJSON | [T1.5_route_generator.md](reports/T1.5_route_generator.md) |
 | 2026-05 | **T2.7 多 seed 显著性 + 冷启动消融** | 活跃域误差棒(std≈0.002)、E1>E4 显著(p<1e-3)；冷启动反转高度显著(p=1.5e-5)；**消融定位：u_LLM/视觉在冷启动也 ROI≈0**，真正工作层是 GMM 聚类+geo/behavior | [T2.7_significance_ablation.md](reports/T2.7_significance_ablation.md) |
+| 2026-06 | **T1.1 后端 `/route` 服务（工程线启动）** | FastAPI 探索辅助形态：显式偏好+CF先验+MMR多样性+可解释标签+反馈；**决定性发现：E4 内容塔不个性化**（真实用户 g_u 嵌入两两 cosine≈0.999），据此按主计划 §4.5 转探索辅助；27 测试全绿 | [T1.1_backend_recommender.md](reports/T1.1_backend_recommender.md) |
 
-**阶段进度速览**（详见 [reports/PROGRESS.md](reports/PROGRESS.md) §1）：Phase 0 预探索 ✅~90% · Phase 1 数据/规则 🟡~55%（后端/前端未起）· Phase 2 算法核心 ✅~90% · Phase 3 整合测试 ⬜0%。
+**阶段进度速览**（详见 [reports/PROGRESS.md](reports/PROGRESS.md) §1）：Phase 0 预探索 ✅~90% · Phase 1 数据/规则/后端 🟡~75%（后端 `/route` ✅、前端未起）· Phase 2 算法核心 ✅~90% · Phase 3 整合测试 ⬜0%。
 
 ---
 
@@ -56,7 +57,17 @@ trailforge/
 │   ├── cf_model.py          # T2.4 双塔 + 协同 + 自适应α 模型定义
 │   ├── cf_train.py          # T2.4/T2.5 训练 + E0–E6 评估（地理感知负采样、BPR）
 │   ├── cf_coldstart.py      # T2.5 冷启动专项评估（20% 用户 hold-out）
-│   └── route_generator.py   # T1.5 规则版路径生成器
+│   ├── cf_export.py         # T1.1 全量训练 E4 并存盘（e4.pt/meta + 几何/logcnt 缓存）→ CF 先验
+│   ├── persona.py           # T1.1 5 个 GMM 聚类 → persona 标签 + 默认偏好 + 冷用户 u_feat
+│   ├── route_generator.py   # T1.5/T1.1 路径生成（规则/注入评分；generate_pool 方向播种候选池）
+│   ├── diversifier.py       # T1.1 MMR 多样性（Jaccard，β=0.7，近重复早停）
+│   └── explainer.py         # T1.1 候选可解释标签（属性相对均值的突出项）
+├── backend/                 # T1.1 FastAPI 探索辅助服务（全新自写）
+│   ├── app.py               # 4+1 接口：/health /personas /route /trails /feedback
+│   ├── engine.py            # 偏好+CF先验打分 → 候选池 → MMR → 解释 → 候选列表
+│   ├── schemas.py           # Pydantic 请求/响应（候选列表契约）
+│   ├── feedback.py          # /feedback 最小实现（jsonl）
+│   └── tests/               # 27 项后端测试（全真数据+真模型）
 ├── notebooks/               # 审计与制图脚本（00 数据审计 / 01 交互摘要 / 02 几何视觉审计 / make_report_figures）
 ├── tests/                   # 单元测试（test_trail_graph.py，8 项）
 ├── figures/                 # 报告插图 fig1–3（.png/.pdf）
@@ -93,8 +104,14 @@ python src/user_repr.py              # T2.3 用户表示 u=24
 python src/cf_train.py --configs E0,E1,E2,E3,E4,E6 --epochs 15   # T2.4/T2.5 矩阵
 python src/cf_coldstart.py           # T2.5 冷启动评估
 python src/route_generator.py        # T1.5 路径生成示例
+python src/cf_export.py              # T1.1 训练并存 E4（CF 先验）+ 几何/logcnt 缓存
+python src/persona.py --rebuild      # T1.1 生成 personas.json（含数据派生默认偏好）
 python notebooks/make_report_figures.py   # 重生成报告插图
-pytest tests/                        # 单元测试
+pytest tests/                        # 单元测试（trail_graph）
+
+# T1.1 后端服务（探索辅助 /route）—— 运行/测试一律带下面两个环境变量
+PYTHONNOUSERSITE=1 PYTHONUTF8=1 python -m pytest backend/tests -v      # 27 项后端测试
+PYTHONNOUSERSITE=1 PYTHONUTF8=1 python -m uvicorn backend.app:app --reload   # 起服务（/docs 可交互）
 ```
 
 > ⚠️ 若 `GaussianMixture` / `np.corrcoef` 在本机 conda 环境触发 MKL 原生崩溃（EXIT 127），设 `MKL_THREADING_LAYER=SEQUENTIAL`（已在相关脚本内固定，见 PROGRESS §5）。

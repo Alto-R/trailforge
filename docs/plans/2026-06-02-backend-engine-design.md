@@ -1,6 +1,6 @@
 # 工程线设计 —— 后端 CF 个性化路线服务（+ 前端 demo）
 
-**日期**：2026-06-02　**状态**：设计中（brainstorming，第 4 段测试策略待定）
+**日期**：2026-06-02　**状态**：已修订 —— 见末尾《修订 R1：转向探索辅助形态》。§1–7 是初版（单条 CF 个性化路线）的设计，**因下述关键发现已被 R1 取代产品形态**，保留作演进记录。
 **范围**：北京登山单活动；把已闭环的研究成果做成可演示 demo（Phase 1 工程线 / PROGRESS §7 高优）
 
 ---
@@ -120,3 +120,53 @@ backend/              # 新：FastAPI 应用（全新自写）
 
 - 每完成一个板块 → 更新 README 里程碑 + PROGRESS + 模块总结报告 → 推 GitHub（提交不署 Claude 为 co-author）。
 - Python 统一用 D 盘 anaconda `trailforge` conda env。
+
+---
+
+# 修订 R1（2026-06-02）：转向探索辅助形态
+
+## R1.1 触发：一个决定性的负面发现 —— E4 内容塔不个性化
+
+初版打算"persona→内容塔评分→单条个性化路线"。实现并跑通后，诊断发现：
+
+- **g_u 把所有用户映射成几乎同一个嵌入**：5 个 persona 的 one-hot 两两 cosine 0.999–1.0；**真实 603 用户**（真实软 cluster+llm）两两 cosine 均值 0.9995。
+- **评分向量两两 Pearson = 1.0** → 冷启动对所有用户给出**完全相同的段排序** → 5 个 persona 得到**同一条路线**、同一目的地（12 起点 × 5 persona 全同）。
+- 模型没学到"cluster k ↔ 段 beh_cluster_k"匹配（c0 甚至 -0.325）。
+
+**解读**：E4 的个性化全在**协同路径**（user_id 嵌入）；内容塔在冷启动只是个"按段流行度/特征"的**全局先验**。研究里"冷启动内容 2.5× 协同（0.457 vs 0.182）"应重述为 **"流行度/特征先验 > 随机未训练嵌入"，而非个性化推荐**。代码与测试全对，是模型性质本身否决了"单条随 persona 变形"的前提。
+
+## R1.2 决策：按主计划 §4.5 的探索辅助形态（用户确认）
+
+主计划 §4.5 早已定产品为**探索辅助而非精准推荐**，理由白纸黑字：*"即使 CF 预测有偏差，用户看到 3–5 条不同风格的路线也能找到合适的那条"*。即**计划预设了 CF 可能不精准**，用"多候选+排序+可解释"容错。上述发现**印证而非推翻**该选择。
+
+**个性化信号来源（用户确认）：显式偏好 + CF 先验 + MMR**：
+- **显式偏好**主导可见个性化：persona→默认偏好权重（数据派生，弱差异，主要在 popularity）+ 滑块可调。已验证 **challenge vs scenic+nature 在 19/20 起点走出不同路线**（PREF_MAP：challenge→坡度、nature→自然、scenic→打卡…）。
+- **CF 段分**作相关性/质量先验（跨用户恒定，但学习式融合 83 维，超出 5 个手挑属性）。
+- **MMR** 给多样性（计划 §5.4.5：候选池 50–100、Jaccard 距离、β=0.7、输出 top 3–5）。
+
+## R1.3 新架构与接口（取代 §4–6 的单路线设计）
+
+```
+src/
+  route_generator.py  generate_pool(start,budget,seg_scores,pool_size) 候选池
+  diversifier.py      MMR（Jaccard，β=0.7）→ top n_routes
+  explainer.py        每条候选 → 可解释标签（属性相对均值的突出项）
+backend/
+  engine.py           偏好(persona默认+滑块)·属性 + CF先验 → seg_scores
+                      → 候选池 → MMR → 解释 → 候选列表
+  schemas.py          RouteRequest{start,persona?,preferences?,budget_km,n_routes}
+                      RouteResponse{candidates:[{length_km,segments,geojson,
+                        attributes,labels,score,reachable}], start_snapped, note}
+  feedback.py + /feedback   记录选了哪条 + 评分（jsonl，最小实现）
+```
+
+**`/route`（POST）** 入：起点[lng,lat]、persona（可选，给默认偏好）、preferences（可选，覆盖默认）、budget_km、n_routes(默认4)。出：3–5 条候选（每条含 GeoJSON/属性/可解释标签/分数），按相关度排序、MMR 去同质。
+**`/personas`**：附 default_prefs。**`/trails`**、**`/health`** 不变。**`/feedback`（POST）**：{chosen_index, rating, comment?} → jsonl。
+
+## R1.4 §5.1.1 特征族偏离（如实记录）
+
+主计划 §5.1.1 列的 `ascent_mean`/`exploration_ratio`/`type_entropy`/`intensity_cv` **未按原样实现**：无 DEM→无爬升项；单活动→无类型熵；改用 `dist_cv`/`start_compactness`/`coverage_breadth`/`daypart_entropy` 等近义替代。原因见 [src/user_features.py](../../src/user_features.py) 文件头与 D0.3。属**有据偏离**，非疏漏。
+
+## R1.5 测试策略（沿用 §7 全真，调整断言）
+
+仍全真数据+真模型、session fixture。断言改为：`/route` 返回 2–5 条候选；候选间 Jaccard 有差异（MMR 生效）；**不同 preferences → 候选集不同**（个性化可见，替代原"不同 persona 不同路线"——后者已知对 CF 无效）；每条含 labels 非空；不可达起点 reachable=False。persona/几何/连通性等不变。
