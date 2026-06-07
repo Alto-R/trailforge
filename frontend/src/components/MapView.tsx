@@ -7,7 +7,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import DeckGL from "@deck.gl/react";
 import { WebMercatorViewport, type PickingInfo } from "@deck.gl/core";
-import { GeoJsonLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { GeoJsonLayer, PathLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { PathStyleExtension } from "@deck.gl/extensions";
 import { Map } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { candidateColor, TRAIL_COLOR } from "../palette";
@@ -36,6 +37,7 @@ const DEFAULT_VIEW: ViewState = {
 type Props = {
   trails: GeoJSON.FeatureCollection | null;
   candidates: RouteCandidate[];
+  pickedStart: LngLat | null;
   startSnapped: LngLat | null;
   activeIdx: number | null;
   onPickStart: (ll: LngLat) => void;
@@ -46,6 +48,7 @@ type Props = {
 export function MapView({
   trails,
   candidates,
+  pickedStart,
   startSnapped,
   activeIdx,
   onPickStart,
@@ -126,6 +129,45 @@ export function MapView({
     });
   }, [candidates, activeIdx]);
 
+  // Honest "snapped to nearest trail" cue: dashed line from the raw click to
+  // the snapped point + a hollow ring at the raw click. Only when they differ.
+  const offsetLayers = useMemo(() => {
+    if (!pickedStart || !startSnapped) return [];
+    const d = Math.hypot(
+      pickedStart[0] - startSnapped[0],
+      pickedStart[1] - startSnapped[1],
+    );
+    if (d < 1e-6) return [];
+    return [
+      new PathLayer<{ path: LngLat[] }>({
+        id: "snap-line",
+        data: [{ path: [pickedStart, startSnapped] }],
+        getPath: (o) => o.path,
+        getColor: [110, 116, 110, 200],
+        getWidth: 1.5,
+        widthUnits: "pixels",
+        widthMinPixels: 1,
+        extensions: [new PathStyleExtension({ dash: true })],
+        // dash props are contributed by PathStyleExtension; spread past the
+        // PathLayer prop type so tsc doesn't flag them as unknown.
+        ...({ getDashArray: [5, 4], dashJustified: true } as object),
+      }),
+      new ScatterplotLayer<LngLat>({
+        id: "picked",
+        data: [pickedStart],
+        getPosition: (p) => p,
+        getRadius: 4,
+        radiusUnits: "pixels",
+        radiusMinPixels: 3,
+        stroked: true,
+        filled: false,
+        getLineColor: [110, 116, 110, 220],
+        getLineWidth: 1.5,
+        lineWidthUnits: "pixels",
+      }),
+    ];
+  }, [pickedStart, startSnapped]);
+
   const startLayer = useMemo(
     () =>
       new ScatterplotLayer<LngLat>({
@@ -145,7 +187,7 @@ export function MapView({
     [startSnapped],
   );
 
-  const layers = [trailLayer, ...candidateLayers, startLayer];
+  const layers = [trailLayer, ...candidateLayers, ...offsetLayers, startLayer];
 
   const handleClick = (info: PickingInfo) => {
     const id = info.layer?.id;

@@ -1,18 +1,19 @@
 // CandidateCard: one route in the list. Colour bar + dot match the map line
 // (assigned by response order via palette.ts). Hover ↔ map highlight is
-// two-way. Inline feedback (Module E): "选这条" and/or 1–5 stars POST /feedback.
+// two-way. Inline feedback (Module E): "选这条" and/or 1–5 stars; the actual
+// POST /feedback + persistence live in App, so `submitted` is the source of truth.
 
 import { useState } from "react";
-import { api } from "../api";
 import { candidateCss } from "../palette";
-import type { FeedbackIn, RouteCandidate } from "../types";
+import type { RouteCandidate } from "../types";
 
 type Props = {
   candidate: RouteCandidate;
   index: number;
   active: boolean;
   dimmed: boolean;
-  context: FeedbackIn["context"];
+  submitted: { rating: number | null } | null;
+  onRate: (rating: number | null) => void;
   onSelect: () => void;
   onHover: (on: boolean) => void;
 };
@@ -22,25 +23,13 @@ export function CandidateCard({
   index,
   active,
   dimmed,
-  context,
+  submitted,
+  onRate,
   onSelect,
   onHover,
 }: Props) {
-  const [done, setDone] = useState<{ rating: number | null } | null>(null);
   const [hoverStar, setHoverStar] = useState(0);
-  const [busy, setBusy] = useState(false);
-
   const color = candidateCss(index);
-
-  const submit = (rating: number | null) => {
-    if (busy || done) return;
-    setBusy(true);
-    api
-      .feedback({ chosen_index: index, rating, comment: null, context })
-      .then(() => setDone({ rating }))
-      .catch(() => undefined)
-      .finally(() => setBusy(false));
-  };
 
   return (
     <div
@@ -81,17 +70,16 @@ export function CandidateCard({
       )}
 
       <div className="feedback" onClick={(e) => e.stopPropagation()}>
-        {done ? (
+        {submitted ? (
           <span className="feedback__done">
-            ✓ 已记录{done.rating ? ` · ${done.rating}★` : ""}
+            ✓ 已记录{submitted.rating ? ` · ${submitted.rating}★` : ""}
           </span>
         ) : (
           <>
             <button
               type="button"
               className="feedback__btn"
-              disabled={busy}
-              onClick={() => submit(null)}
+              onClick={() => onRate(null)}
             >
               选这条
             </button>
@@ -107,7 +95,7 @@ export function CandidateCard({
                   type="button"
                   className={`star${n <= hoverStar ? " star--on" : ""}`}
                   onMouseEnter={() => setHoverStar(n)}
-                  onClick={() => submit(n)}
+                  onClick={() => onRate(n)}
                   aria-label={`${n} 星`}
                 >
                   ★

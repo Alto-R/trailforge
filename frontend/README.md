@@ -7,7 +7,7 @@
 
 ## 技术栈
 
-Vite 8 + React 19 + TypeScript 6；地图 `deck.gl 9 + maplibre-gl 5 + react-map-gl 8`（底图 carto positron 矢量瓦片）；状态用 React 自带 hook（`useRoute` 防抖 + 竞态），请求用原生 `fetch` 薄封装。无重组件库 / 无 redux。
+Vite 8 + React 19 + TypeScript 6；地图 `deck.gl 9 + maplibre-gl 5 + react-map-gl 8`（底图 carto positron 矢量瓦片，起点吸附虚线用 `@deck.gl/extensions` 的 `PathStyleExtension`）；状态用 React 自带 hook（`useRoute` 防抖 + 竞态），请求用原生 `fetch` 薄封装。无重组件库 / 无 redux。
 
 > react-map-gl v8 按底图分包导入：本项目用 `import { Map } from "react-map-gl/maplibre"`。
 
@@ -35,6 +35,7 @@ Vite dev proxy 把 `/api/*` 转发到 `127.0.0.1:8000`（见 [vite.config.ts](vi
 | `npm run build` | `tsc -b` 类型检查 + 生产构建到 `dist/` |
 | `npm run preview` | 本地预览生产构建 |
 | `npm test` | Vitest 单测（`api` URL/payload、`useRoute` 防抖、配色稳定） |
+| `npm run e2e` | Playwright 全栈冒烟（点起点→候选→拖滑块→反馈）；**先起后端** + 首次 `npx playwright install chromium` |
 
 ## 结构
 
@@ -53,10 +54,12 @@ src/
 │   ├── CandidateCard.tsx     # 单卡：色点/里程/标签 chip/反馈星级
 │   └── Banner.tsx            # 地图顶部 warn（不可达 note）/ error 浮条
 └── styles/app.css            # "地形图田野手册"主题（栅格布局 + 响应式）
+
+e2e/smoke.spec.ts             # Playwright 全栈冒烟（playwright.config.ts，需后端在跑）
 ```
 
 ## 已知边界（与设计文档 §6 一致）
 
 - 不做环线闭合 / 局部搜索（后端 T2.6 未做，前端不涉及）。
-- 起点偏移虚线、窄屏抽屉的极致打磨从简（响应式可用即可）。
+- 起点吸附虚线、反馈持久化、窄屏 swipe 候选、Playwright 冒烟均已补齐（见 [reports/T1.6](../reports/T1.6_frontend.md) §4）。
 - `npm run build` 仅一条 chunk-size 警告（deck.gl + maplibre 体积固有），不影响运行。

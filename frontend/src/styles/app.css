@@ -577,14 +577,39 @@ input[type="range"]::-moz-range-thumb {
 @media (max-width: 768px) {
   .app {
     grid-template-columns: 1fr;
-    grid-template-rows: 48vh 1fr;
+    grid-template-rows: 46vh 1fr;
     height: 100vh;
+  }
+  .map-pane {
+    order: -1;
   }
   .sidebar {
     border-right: none;
     border-top: 1px solid var(--line);
   }
-  .map-pane {
-    order: -1;
+  .brand {
+    padding: 16px 18px 14px;
+  }
+  .panel {
+    padding: 14px 18px;
+  }
+  /* candidates become a horizontal swipe rail so the map keeps its height */
+  .candidates {
+    flex-direction: row;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    gap: 12px;
+    padding: 14px 18px 20px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .candidates > .panel__label {
+    display: none; /* a column label would break the horizontal row */
+  }
+  .candidates__empty {
+    flex: 1;
+  }
+  .card {
+    flex: 0 0 80%;
+    scroll-snap-align: start;
   }
 }

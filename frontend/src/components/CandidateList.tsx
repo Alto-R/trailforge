@@ -1,16 +1,19 @@
 // CandidateList: the score-desc candidate cards under the controls. Active =
 // hovered, falling back to selected (mirrors the map's activeIdx). When one is
 // active the rest dim, so "a few different styles" reads at a glance (MMR).
+// Feedback state lives in App (keyed by route signature) so it survives re-routes.
 
 import { CandidateCard } from "./CandidateCard";
-import type { LngLat, Prefs, RouteCandidate } from "../types";
+import type { RouteCandidate } from "../types";
 
 type Props = {
   candidates: RouteCandidate[];
   loading: boolean;
   selectedIdx: number | null;
   hoveredIdx: number | null;
-  context: { start: LngLat | null; prefs: Prefs; budget_km: number };
+  hasStart: boolean;
+  submittedFor: (c: RouteCandidate) => { rating: number | null } | null;
+  onRate: (c: RouteCandidate, rating: number | null, index: number) => void;
   onSelect: (i: number | null) => void;
   onHover: (i: number | null) => void;
 };
@@ -20,7 +23,9 @@ export function CandidateList({
   loading,
   selectedIdx,
   hoveredIdx,
-  context,
+  hasStart,
+  submittedFor,
+  onRate,
   onSelect,
   onHover,
 }: Props) {
@@ -35,7 +40,7 @@ export function CandidateList({
         <p className="candidates__empty">
           {loading
             ? "正在生成候选路线…"
-            : context.start
+            : hasStart
               ? "该起点附近没找到可行路线，换个点或调大目标里程试试。"
               : "在地图上点一个起点，几条不同风格的候选路线会出现在这里。"}
         </p>
@@ -55,7 +60,8 @@ export function CandidateList({
           index={i}
           active={activeIdx === i}
           dimmed={activeIdx !== null && activeIdx !== i}
-          context={context}
+          submitted={submittedFor(c)}
+          onRate={(rating) => onRate(c, rating, i)}
           onSelect={() => onSelect(selectedIdx === i ? null : i)}
           onHover={(on) => onHover(on ? i : null)}
         />

@@ -9,7 +9,7 @@ import { CandidateList } from "./components/CandidateList";
 import { Banner } from "./components/Banner";
 import { MapView } from "./components/MapView";
 import { useRoute } from "./hooks/useRoute";
-import type { Health, LngLat, Persona, Prefs } from "./types";
+import type { Health, LngLat, Persona, Prefs, RouteCandidate } from "./types";
 import "./styles/app.css";
 
 const BALANCED: Prefs = {
@@ -32,6 +32,9 @@ export default function App() {
   const [budgetKm, setBudgetKm] = useState(4);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  // Feedback keyed by a stable route signature so a "✓ recorded" mark survives
+  // re-routes (drag a slider, the same route reappears → still marked).
+  const [rated, setRated] = useState<Record<string, number | null>>({});
 
   // startup self-check + load personas/trails once
   useEffect(() => {
@@ -66,6 +69,36 @@ export default function App() {
     setPersonaId(null); // diverged from preset
   };
 
+  const sigOf = (c: RouteCandidate) =>
+    `${c.segments[0]}_${c.segments[c.segments.length - 1]}_${c.n_segments}`;
+  const submittedFor = (c: RouteCandidate) => {
+    const sig = sigOf(c);
+    return sig in rated ? { rating: rated[sig] } : null;
+  };
+  const submitFeedback = (
+    c: RouteCandidate,
+    rating: number | null,
+    index: number,
+  ) => {
+    const sig = sigOf(c);
+    if (sig in rated) return;
+    setRated((prev) => ({ ...prev, [sig]: rating })); // optimistic
+    api
+      .feedback({
+        chosen_index: index,
+        rating,
+        comment: null,
+        context: { start, prefs, budget_km: budgetKm },
+      })
+      .catch(() => {
+        setRated((prev) => {
+          const next = { ...prev };
+          delete next[sig]; // roll back so the user can retry
+          return next;
+        });
+      });
+  };
+
   const activeIdx = hoveredIdx ?? selectedIdx;
   const startSnapped = route.data?.start_snapped ?? null;
 
@@ -97,7 +130,9 @@ export default function App() {
           loading={route.loading}
           selectedIdx={selectedIdx}
           hoveredIdx={hoveredIdx}
-          context={{ start, prefs, budget_km: budgetKm }}
+          hasStart={start !== null}
+          submittedFor={submittedFor}
+          onRate={submitFeedback}
           onSelect={setSelectedIdx}
           onHover={setHoveredIdx}
         />
@@ -107,6 +142,7 @@ export default function App() {
         <MapView
           trails={trails}
           candidates={candidates}
+          pickedStart={start}
           startSnapped={startSnapped}
           activeIdx={activeIdx}
           onPickStart={setStart}
