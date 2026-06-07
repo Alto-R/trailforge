@@ -39,9 +39,10 @@ export default function App() {
     api
       .health(ac.signal)
       .then(setHealth)
-      .catch((e: unknown) =>
-        setHealthErr(e instanceof Error ? e.message : "后端未连接"),
-      );
+      .catch((e: unknown) => {
+        if (ac.signal.aborted) return; // StrictMode remount aborted us; ignore
+        setHealthErr(e instanceof Error ? e.message : "后端未连接");
+      });
     api.personas(ac.signal).then(setPersonas).catch(() => undefined);
     api.trails(ac.signal).then(setTrails).catch(() => undefined);
     return () => ac.abort();

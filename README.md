@@ -32,8 +32,9 @@
 | 2026-05 | **T1.5 规则版路径生成器** | best-first DFS，不同偏好从同一起点生成可区分的 ~4km 路线 + WGS84 GeoJSON | [T1.5_route_generator.md](reports/T1.5_route_generator.md) |
 | 2026-05 | **T2.7 多 seed 显著性 + 冷启动消融** | 活跃域误差棒(std≈0.002)、E1>E4 显著(p<1e-3)；冷启动反转高度显著(p=1.5e-5)；**消融定位：u_LLM/视觉在冷启动也 ROI≈0**，真正工作层是 GMM 聚类+geo/behavior | [T2.7_significance_ablation.md](reports/T2.7_significance_ablation.md) |
 | 2026-06 | **T1.1 后端 `/route` 服务（工程线启动）** | FastAPI 探索辅助形态：显式偏好+CF先验+MMR多样性+可解释标签+反馈；**决定性发现：E4 内容塔不个性化**（真实用户 g_u 嵌入两两 cosine≈0.999），据此按主计划 §4.5 转探索辅助；27 测试全绿 | [T1.1_backend_recommender.md](reports/T1.1_backend_recommender.md) |
+| 2026-06 | **T1.6 前端探索辅助 demo（工程线闭环）** | Vite8+React19+deck.gl9 单屏：点起点→即时出多条不同色候选、拖滑块实时重算、persona填充、候选↔地图双向高亮、星级反馈；全栈实测 4 候选同屏；前端 9 测试 + `tsc` 构建全绿 | [T1.6_frontend.md](reports/T1.6_frontend.md) |
 
-**阶段进度速览**（详见 [reports/PROGRESS.md](reports/PROGRESS.md) §1）：Phase 0 预探索 ✅~90% · Phase 1 数据/规则/后端 🟡~75%（后端 `/route` ✅、前端未起）· Phase 2 算法核心 ✅~90% · Phase 3 整合测试 ⬜0%。
+**阶段进度速览**（详见 [reports/PROGRESS.md](reports/PROGRESS.md) §1）：Phase 0 预探索 ✅~90% · Phase 1 数据/规则/后端/**前端** ✅~95%（后端 `/route` + 前端 demo 全栈跑通）· Phase 2 算法核心 ✅~90% · Phase 3 整合测试 ⬜0%。
 
 ---
 
@@ -68,6 +69,8 @@ trailforge/
 │   ├── schemas.py           # Pydantic 请求/响应（候选列表契约）
 │   ├── feedback.py          # /feedback 最小实现（jsonl）
 │   └── tests/               # 27 项后端测试（全真数据+真模型）
+├── frontend/                # T1.6 Vite8+React19+deck.gl9 探索辅助界面（见 frontend/README.md）
+│   └── src/                 # api/types/palette + hooks/useRoute + components(Map/Control/Candidate...)
 ├── notebooks/               # 审计与制图脚本（00 数据审计 / 01 交互摘要 / 02 几何视觉审计 / make_report_figures）
 ├── tests/                   # 单元测试（test_trail_graph.py，8 项）
 ├── figures/                 # 报告插图 fig1–3（.png/.pdf）
@@ -112,6 +115,14 @@ pytest tests/                        # 单元测试（trail_graph）
 # T1.1 后端服务（探索辅助 /route）—— 运行/测试一律带下面两个环境变量
 PYTHONNOUSERSITE=1 PYTHONUTF8=1 python -m pytest backend/tests -v      # 27 项后端测试
 PYTHONNOUSERSITE=1 PYTHONUTF8=1 python -m uvicorn backend.app:app --reload   # 起服务（/docs 可交互）
+```
+
+**T1.6 前端 demo**（先起后端、再起前端；详见 [frontend/README.md](frontend/README.md)）：
+
+```bash
+cd frontend
+npm install
+npm run dev          # http://localhost:5173 ，dev proxy 把 /api/* 转 127.0.0.1:8000
 ```
 
 > ⚠️ 若 `GaussianMixture` / `np.corrcoef` 在本机 conda 环境触发 MKL 原生崩溃（EXIT 127），设 `MKL_THREADING_LAYER=SEQUENTIAL`（已在相关脚本内固定，见 PROGRESS §5）。
