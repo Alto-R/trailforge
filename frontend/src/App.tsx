@@ -30,6 +30,7 @@ export default function App() {
   const [personaId, setPersonaId] = useState<string | null>(null);
   const [prefs, setPrefs] = useState<Prefs>(BALANCED);
   const [budgetKm, setBudgetKm] = useState(4);
+  const [loop, setLoop] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   // Feedback keyed by a stable route signature so a "✓ recorded" mark survives
@@ -51,7 +52,7 @@ export default function App() {
     return () => ac.abort();
   }, []);
 
-  const route = useRoute(start, prefs, budgetKm);
+  const route = useRoute(start, prefs, budgetKm, loop);
   const candidates = route.data?.candidates ?? [];
 
   // reset selection whenever a fresh result arrives
@@ -119,11 +120,13 @@ export default function App() {
           personaId={personaId}
           prefs={prefs}
           budgetKm={budgetKm}
+          loop={loop}
           hasStart={start !== null}
           loading={route.loading}
           onPickPersona={onPickPersona}
           onChangePrefs={onChangePrefs}
           onChangeBudget={setBudgetKm}
+          onChangeLoop={setLoop}
         />
         <CandidateList
           candidates={candidates}

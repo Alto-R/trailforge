@@ -53,7 +53,7 @@ def make_route(req: RouteRequest,
                engine: RouteEngine = Depends(get_engine)) -> dict:
     try:
         return engine.route(req.lng, req.lat, req.persona, req.preferences,
-                            req.budget_km, req.n_routes)
+                            req.budget_km, req.n_routes, req.loop)
     except KeyError as e:                       # unknown persona id
         raise HTTPException(status_code=422, detail=str(e))
 

@@ -26,6 +26,7 @@ class RouteRequest(BaseModel):
         examples=[{"challenge": 1.0, "scenic": 0.5}])
     budget_km: float = Field(..., gt=0, le=50, description="target route length (km)")
     n_routes: int = Field(4, ge=1, le=8, description="how many candidates to return")
+    loop: bool = Field(False, description="T2.6: generate loop routes that return to the start")
 
     @property
     def lng(self) -> float:
@@ -46,6 +47,8 @@ class RouteCandidate(BaseModel):
     geojson: dict = Field(..., description="FeatureCollection of the route, WGS84")
     attributes: dict = Field(default_factory=dict, description="mean attrs along route")
     labels: list[str] = Field(default_factory=list, description="explainable why-tags")
+    loop: bool = Field(False, description="T2.6: True if this is a loop route")
+    closed: bool = Field(False, description="T2.6: True if the loop returns by a mostly-new path (a real loop, not a retrace)")
 
 
 class RouteResponse(BaseModel):

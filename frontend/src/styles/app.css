@@ -292,6 +292,23 @@ input[type="range"]::-moz-range-thumb {
   font-weight: 600;
 }
 
+.loop-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--ink, #2c3531);
+  cursor: pointer;
+  user-select: none;
+}
+.loop-toggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--forest);
+  cursor: pointer;
+}
+
 /* ---------- status row ---------- */
 
 .status {

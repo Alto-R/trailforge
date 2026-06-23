@@ -12,11 +12,13 @@ type Props = {
   personaId: string | null;
   prefs: Prefs;
   budgetKm: number;
+  loop: boolean;
   hasStart: boolean;
   loading: boolean;
   onPickPersona: (p: Persona) => void;
   onChangePrefs: (next: Prefs) => void;
   onChangeBudget: (km: number) => void;
+  onChangeLoop: (loop: boolean) => void;
 };
 
 export function ControlPanel({
@@ -25,11 +27,13 @@ export function ControlPanel({
   personaId,
   prefs,
   budgetKm,
+  loop,
   hasStart,
   loading,
   onPickPersona,
   onChangePrefs,
   onChangeBudget,
+  onChangeLoop,
 }: Props) {
   const setPref = (key: keyof Prefs, value: number) =>
     onChangePrefs({ ...prefs, [key]: value });
@@ -95,6 +99,15 @@ export function ControlPanel({
           aria-label="目标里程"
           style={{ marginTop: 8 }}
         />
+        <label className="loop-toggle">
+          <input
+            type="checkbox"
+            checked={loop}
+            onChange={(e) => onChangeLoop(e.target.checked)}
+            aria-label="环线"
+          />
+          <span>环线（回到起点）</span>
+        </label>
       </section>
 
       <section className="panel">

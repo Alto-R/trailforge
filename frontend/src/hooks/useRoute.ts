@@ -19,6 +19,7 @@ export function useRoute(
   start: LngLat | null,
   prefs: Prefs,
   budgetKm: number,
+  loop = false,
 ): RouteState {
   const [state, setState] = useState<RouteState>({
     data: null,
@@ -30,7 +31,7 @@ export function useRoute(
   const abortRef = useRef<AbortController | null>(null);
 
   const run = useCallback(
-    (s: LngLat, p: Prefs, b: number) => {
+    (s: LngLat, p: Prefs, b: number, lp: boolean) => {
       const id = ++reqId.current;
       abortRef.current?.abort();
       const ac = new AbortController();
@@ -39,7 +40,7 @@ export function useRoute(
       setState((prev) => ({ ...prev, loading: true, error: null }));
       api
         .route(
-          { start: s, preferences: p, budget_km: b, n_routes: N_ROUTES },
+          { start: s, preferences: p, budget_km: b, n_routes: N_ROUTES, loop: lp },
           ac.signal,
         )
         .then((data) => {
@@ -62,10 +63,10 @@ export function useRoute(
       setState({ data: null, loading: false, error: null });
       return;
     }
-    const t = setTimeout(() => run(start, prefs, budgetKm), DEBOUNCE_MS);
+    const t = setTimeout(() => run(start, prefs, budgetKm, loop), DEBOUNCE_MS);
     return () => clearTimeout(t);
     // start identity changes on each click; prefs/budget on each slider move
-  }, [start, prefs, budgetKm, run]);
+  }, [start, prefs, budgetKm, loop, run]);
 
   return state;
 }

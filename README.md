@@ -33,8 +33,9 @@
 | 2026-05 | **T2.7 多 seed 显著性 + 冷启动消融** | 活跃域误差棒(std≈0.002)、E1>E4 显著(p<1e-3)；冷启动反转高度显著(p=1.5e-5)；**消融定位：u_LLM/视觉在冷启动也 ROI≈0**，真正工作层是 GMM 聚类+geo/behavior | [T2.7_significance_ablation.md](reports/T2.7_significance_ablation.md) |
 | 2026-06 | **T1.1 后端 `/route` 服务（工程线启动）** | FastAPI 探索辅助形态：显式偏好+CF先验+MMR多样性+可解释标签+反馈；**决定性发现：E4 内容塔不个性化**（真实用户 g_u 嵌入两两 cosine≈0.999），据此按主计划 §4.5 转探索辅助；27 测试全绿 | [T1.1_backend_recommender.md](reports/T1.1_backend_recommender.md) |
 | 2026-06 | **T1.6 前端探索辅助 demo（工程线闭环）** | Vite8+React19+deck.gl9 单屏：点起点→即时出多条不同色候选、拖滑块实时重算、persona填充、候选↔地图双向高亮、星级反馈；全栈实测 4 候选同屏；前端 9 测试 + `tsc` 构建全绿 | [T1.6_frontend.md](reports/T1.6_frontend.md) |
+| 2026-06 | **T2.6 路径生成器升级：环线 + 局部搜索** | `generate_loop`（方向惯性+Dijkstra 保底，回到起点、实测可出真环线）+ `local_search`（确定性扰动精修）；端到端 `/route?loop=true` + 前端"环线"复选框；全量测试 49 项全绿（40 Python + 9 前端）。CF 化已在 T1.1 完成（内容塔不个性化，CF 仅作先验） | [T2.6_route_loop_localsearch.md](reports/T2.6_route_loop_localsearch.md) |
 
-**阶段进度速览**（详见 [reports/PROGRESS.md](reports/PROGRESS.md) §1）：Phase 0 预探索 ✅~90% · Phase 1 数据/规则/后端/**前端** ✅~95%（后端 `/route` + 前端 demo 全栈跑通）· Phase 2 算法核心 ✅~90% · Phase 3 整合测试 ⬜0%。
+**阶段进度速览**（详见 [reports/PROGRESS.md](reports/PROGRESS.md) §1）：Phase 0 预探索 ✅~90% · Phase 1 数据/规则/后端/前端 ✅~95% · Phase 2 算法核心 ✅~100%（含 T2.6 环线+局部搜索）· Phase 3 整合测试 🟡~15%（集成/多样性/可解释/端到端测试已落地；**T3.5 真人用户测试需线下组织**）。
 
 ---
 
@@ -106,7 +107,7 @@ python src/segment_repr.py           # D0.6 片段表示 s=83
 python src/user_repr.py              # T2.3 用户表示 u=24
 python src/cf_train.py --configs E0,E1,E2,E3,E4,E6 --epochs 15   # T2.4/T2.5 矩阵
 python src/cf_coldstart.py           # T2.5 冷启动评估
-python src/route_generator.py        # T1.5 路径生成示例
+python src/route_generator.py        # T1.5/T2.6 路径生成示例（开放路径 + 环线对比）
 python src/cf_export.py              # T1.1 训练并存 E4（CF 先验）+ 几何/logcnt 缓存
 python src/persona.py --rebuild      # T1.1 生成 personas.json（含数据派生默认偏好）
 python notebooks/make_report_figures.py   # 重生成报告插图
@@ -148,6 +149,7 @@ npm run dev          # http://localhost:5173 ，dev proxy 把 /api/* 转 127.0.0
 | 模块总结 | `reports/D0.2_*` `D0.3_*` `D0.4_*` `D0.5_*` `D0.6_*` | 各数据处理交付的总结说明 |
 | 模块总结 | `reports/T0.2_*` `T2.2_*` `T2.5_*` | LLM 画像、增益、CF 矩阵、冷启动的总结说明（含 `.csv` 指标） |
 | 模块总结 | [reports/T1.5_route_generator.md](reports/T1.5_route_generator.md) | 规则版路径生成器（算法 / 约束 / demo / 待办） |
+| 模块总结 | [reports/T2.6_route_loop_localsearch.md](reports/T2.6_route_loop_localsearch.md) | 路径生成器升级：环线（方向惯性+Dijkstra 保底）+ 局部搜索 + 端到端接线 |
 | 模块总结 | [reports/T2.7_significance_ablation.md](reports/T2.7_significance_ablation.md) | 多 seed 显著性 + 冷启动域内部消融（均值±std / p 值 / 哪层内容有用） |
 | 上级计划 | `../vispath2_project_plan.md` · `../vispath2_execution_handbook.md` | 研究与原型开发主文档 + 执行手册 |
 

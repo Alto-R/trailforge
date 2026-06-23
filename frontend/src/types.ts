@@ -46,6 +46,7 @@ export type RouteRequest = {
   preferences?: Partial<Prefs> | null;
   budget_km: number;
   n_routes?: number;
+  loop?: boolean;
 };
 
 /** One route in the candidate list (RouteCandidate). */
@@ -58,6 +59,8 @@ export type RouteCandidate = {
   geojson: GeoJSON.FeatureCollection;
   attributes: Record<string, number>;
   labels: string[];
+  loop?: boolean;
+  closed?: boolean;
 };
 
 /** POST /route response (RouteResponse). */

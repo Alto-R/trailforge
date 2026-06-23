@@ -65,6 +65,20 @@ def test_infeasible_start(engine, components):
     assert len(r["candidates"]) == 1
 
 
+def test_loop_routes_return_to_start(engine, junction_start):
+    r = engine.route(junction_start["lng"], junction_start["lat"], None,
+                     {"challenge": 1.0}, budget_km=4.0, n_routes=4, loop=True)
+    cands = r["candidates"]
+    assert 1 <= len(cands) <= 4
+    for c in cands:
+        segs = c["segments"]
+        assert c["loop"] is True
+        assert segs[0] == segs[-1]                 # loop closes back to the start
+        for a, b in zip(segs, segs[1:]):
+            assert b in engine.graph.neighbors(a)  # real graph connectivity
+        assert isinstance(c["closed"], bool)
+
+
 def test_route_determinism(engine, junction_start):
     kw = dict(persona_id=None, preferences={"nature": 1.0}, budget_km=4.0, n_routes=4)
     r1 = engine.route(junction_start["lng"], junction_start["lat"], **kw)

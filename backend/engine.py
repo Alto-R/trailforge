@@ -134,7 +134,7 @@ class RouteEngine:
     def _candidate(self, item: dict, seg_scores: dict, rel: float) -> dict:
         segs = item["segments"]
         attrs = explainer.route_attrs(segs, self.raw_feat, self.attr_stats["cols"])
-        return {
+        cand = {
             "length_km": item["length_km"],
             "n_segments": item["n_segments"],
             "reachable": item["reached"],
@@ -144,16 +144,47 @@ class RouteEngine:
             "labels": explainer.label_route(attrs, self.attr_stats),
             "score": round(float(rel), 4),
         }
+        if item.get("loop"):                       # T2.6 loop route metadata
+            cand["loop"] = True
+            cand["closed"] = bool(item.get("closed", False))
+        return cand
+
+    def _loop_pool(self, x: float, y: float, budget_km: float,
+                   seg_scores: dict) -> list[dict]:
+        """T2.6: a diverse pool of LOOP routes — one loop seeded per distinct
+        early direction out of the clicked start, then local-search refined and
+        deduped by segment set (主文档 §5.4.3/§5.4.4)."""
+        start = self.graph.find_nearest_segment(x, y)
+        seeds = [None] + list(self.graph.neighbors(start))   # free + per-direction
+        pool, seen = [], set()
+        for step in seeds:
+            item = self.gen.generate_loop((x, y), budget_km, seg_scores=seg_scores,
+                                          first_step=step)
+            refined, rlen = self.gen.local_search(item["segments"], budget_km,
+                                                   seg_scores=seg_scores)
+            if refined != item["segments"]:
+                closed = item.get("closed", False)
+                item = self.gen._package(refined, rlen, reached=item["reached"])
+                item["loop"] = True
+                item["closed"] = closed
+            key = frozenset(item["segments"])
+            if key not in seen:
+                seen.add(key)
+                pool.append(item)
+        return pool
 
     def route(self, lng: float, lat: float, persona_id: str | None,
               preferences: dict | None, budget_km: float,
-              n_routes: int = DEFAULT_N_ROUTES) -> dict:
+              n_routes: int = DEFAULT_N_ROUTES, loop: bool = False) -> dict:
         x, y = self._to_albers.transform(lng, lat)
         prefs = self.resolve_prefs(persona_id, preferences)
         seg_scores = self._seg_scores(prefs)
 
-        pool = self.gen.generate_pool((x, y), budget_km, seg_scores=seg_scores,
-                                      pool_size=POOL_SIZE)
+        if loop:
+            pool = self._loop_pool(x, y, budget_km, seg_scores)
+        else:
+            pool = self.gen.generate_pool((x, y), budget_km, seg_scores=seg_scores,
+                                          pool_size=POOL_SIZE)
         seg_sets = [set(it["segments"]) for it in pool]
         rel = [float(np.mean([seg_scores.get(s, 0.0) for s in it["segments"]]))
                for it in pool]
