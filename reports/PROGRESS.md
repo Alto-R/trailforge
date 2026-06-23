@@ -90,6 +90,12 @@
 
 ## 4. 数据资产现状（`data_processed/`，从 G: 盘可重建）
 
+> **复现性已验证（2026-06-23）**：G: 盘挂载后，从原始数据完整重跑全流水线，逐步数字与历史报告一致 ——
+> interaction 1,594,250 行 / 3630 用户 / recall 0.972；split 1,276,886 / 317,364；trail_graph 29,941 段 / 610 分量 / 最大 4478；
+> visual 538,848 张照片 / 覆盖 30.7% / 54 维；user_features 603 用户 / **BIC 选 K=5**；segment_repr s=83（+2 flag）；user_repr u=24；
+> cf_export E4 收敛（BPR 0.542→0.215，学到 w1<0=−1.31）、活跃域 R@10=0.506/NDCG@10=0.386（与历史 0.508/0.389 在 seed 方差内一致）。
+> 重训模型 + 重建 personas 后，**40 项后端+算法测试全绿**——即 README §4 的"从 G: 盘一键重建"声明成立。
+
 - **交互**：`interactions_climbing/train/test.parquet`（80/20 时间划分）
 - **片段**：`segment_features_climbing.parquet`(s 三层 83 维)、`segment_visual_climbing.parquet`、`adjacency_climbing.pkl`(TrailGraph)
 - **用户**：`user_cluster_soft.parquet`(K=5)、`user_llm_profile.parquet`(18 维)、`user_features_repr.parquet`(u 24 维)、`user_text_climbing.parquet`
